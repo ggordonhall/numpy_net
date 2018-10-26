@@ -16,10 +16,8 @@ class Loader:
 
     def __init__(self, file_path: str, batch_size: int=2, split_ratio: float=0.9):
         """Read and split data from ``file_path``.
-
         Arguments:
             file_path {str} -- path to csv file
-
         Keyword Arguments:
             batch_size {int} -- size of each batch (default: {2})
             split_ratio {float} -- train to test set size ratio (default: {0.9})
@@ -38,7 +36,6 @@ class Loader:
         """Read data from csv at ``file_path``. Extract label and
         feature columns and convert them to np.ndarrays, then pair
         feature vectors with corresponding labels.
-
         Returns:
             {List[Tuple[np.ndarray]]} --
                 a list of pairs of numpy features and labels
@@ -55,11 +52,9 @@ class Loader:
     def _split(self, pairs: List[Tuple[np.ndarray]]) -> Tuple[List[Tuple[np.ndarray]]]:
         """Split list of pairs into training and test
         sets according to the ratio ``split_ratio``.
-
         Arguments:
             pairs {List[Tuple[np.ndarray]]} -- 
                 list of pairs of numpy features and labels
-
         Returns:
             {Tuple[List[Tuple[np.ndarray]]]} -- 
                 tuple of training and test sets
@@ -71,11 +66,9 @@ class Loader:
     def _stack(self, batch: List[Tuple[np.ndarray]]) -> Tuple[np.ndarray]:
         """Stack lists of features and tuples into
         2-d numpy arrays.
-
         Arguments:
             batch {List[Tuple[np.ndarray]]} -- 
                 list of (feature, label) tuples
-
         Returns:
             {Tuple[np.ndarray]} -- 
                 2-d feature and label np.ndarrays
@@ -88,30 +81,25 @@ class Loader:
     def _one_hot(self, labels: List[int], num_classes: int) -> np.ndarray:
         """Convert label indicies to one-hot vectors.
         i.e. 3 -> [0, 0, 1]
-
         Arguments:
             labels {List[int]} -- list of labels
             num_classes: int -- number of classes
-
         Returns:
             np.ndarray -- one-hot matrix
         """
 
         indices = np.array(labels) - 1
-        return np.eye(num_classes)[indices]
+        return np.eye(num_classes, dtype=int)[indices]
 
     def iterator(self, mode: Union["train", "test"]) -> Iterable:
         """Yield chunks of data of size ``batch_size`` from
         the dataset specified by ``mode``.
-
         Arguments:
             mode {Union["train", "test"]} --
                 the data split to load
-
         Raises:
             BatchSizeError --
                 if batch_size > size of dataset
-
         Returns:
             {Iterable} -- a batched data iterator
         """
