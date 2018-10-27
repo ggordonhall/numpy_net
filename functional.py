@@ -10,16 +10,16 @@ def relu(x):
     return np.maximum(0, x)
 
 
-def relu_derivative(dA, Z):
-    dZ = np.array(dA, copy=True)
-    dZ[Z <= 0] = 0
-    return dZ
+def relu_derivative(dx, z):
+    dz = np.array(dx, copy=True)
+    dz[z <= 0] = 0
+    return dz
 
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
-def sigmoid_derivative(dA, Z):
-    sig = sigmoid(Z)
-    return dA * sig * (1 - sig)
+def sigmoid_derivative(dx, z):
+    sig = sigmoid(z)
+    return dx * sig * (1 - sig)

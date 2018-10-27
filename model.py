@@ -1,36 +1,40 @@
 from typing import List, Tuple, Dict
+
+import time
+import logging
 import numpy as np
 
 import functional as F
-from data import Loader
+from utils import time_since
+from utils import predictions
+from utils import plot_loss
 
-loader = Loader("wine.csv", 2)
-activations = {"relu": F.relu, "sigmoid": F.sigmoid}
-derivatives = {"relu": F.relu_derivative, "sigmoid": F.sigmoid_derivative}
+
+ACTIVATIONS = {"relu": (F.relu, F.relu_derivative),
+               "sigmoid": (F.sigmoid, F.sigmoid_derivative)}
 
 
 class NeuralNet:
-    def __init__(self, inp_dim: int, out_dim: int, bs: int, lr: float, activation: str, *hidden_sizes: int):
+    def __init__(self, loader, lr, activation, *hidden_sizes):
         """Define network dimensions and activation functions.
 
         Arguments:
-            inp_dim {int} -- the number of features
-            out_dim {int} -- the number of classes
-            bs {int} -- the batch size
+            loader {data.Loader} -- a data loader
             lr {float} -- the learning rate
             activation {str} -- name of the activation function
             hidden_sizes {int} -- variable number of hidden sizes
         """
-        self._bs = bs
+
         self._lr = lr
-        self._layers = [inp_dim, *hidden_sizes, out_dim]
+        self._loader = loader
+        self._bs = loader.batch_size
+        self._layers = [loader.num_features, *hidden_sizes, loader.num_classes]
         self._num_layers = len(self._layers) - 1
         self._params = self.init_parameters()
 
-        if activation not in activations.keys():
+        if activation not in ACTIVATIONS.keys():
             raise Exception("Activation function not supported!")
-        self._activation = activations[activation]
-        self._activation_derivative = derivatives[activation]
+        self._activation, self._activation_derivative = ACTIVATIONS[activation]
 
     def init_parameters(self):
         """Initialise network weights and biases and
@@ -88,7 +92,7 @@ class NeuralNet:
 
         Expressions:
             1) z = xW + b
-            2) a = g(z)
+            2) x' = g(z)
 
         Arguments:
             x {np.ndarray} --
@@ -99,8 +103,9 @@ class NeuralNet:
                 biases (batch size * next layer dim)
 
         Returns:
-            {Tuple[np.ndarray]} -- a, z
+            {Tuple[np.ndarray]} -- x', z
         """
+
         z = x.dot(W) + b
         return self._activation(z), z
 
@@ -109,8 +114,8 @@ class NeuralNet:
         between predicted and actual probability
         distribution.
 
-        Loss function:
-            L = - ∑ (y_i * log(y_hat_i))
+        Expression:
+            1) L = -∑(y * log(ŷ))
 
         Arguments:
             y_hat {np.ndarray} --
@@ -131,8 +136,8 @@ class NeuralNet:
         """Calculate batch-average gradient of loss function
          with respect to the network output.
 
-        Derivative:
-            dL/dO = y_hat_i - y_i
+        Expression:
+            1) dL/dx = ŷ - y
 
         Arguments:
             y_hat {np.ndarray} --
@@ -150,31 +155,30 @@ class NeuralNet:
         y_hat[range(self._bs), y] -= 1
         return y_hat / self._bs
 
-    def backprop_layer(self, x, W, b, z, x_prev):
-        """Calculate the gradients of a single
+    def backprop_layer(self, dx, W, b, z, x_prev):
+        """Calculate the gradients for a single
         feedforward layer.
 
         Gradients:
-            dW = xT.dz
-            db = ∑ dz / bs
-            dx_prev = dz.WT
+            dW = x'T.dz / bs
+            db = ∑ (dz) / bs
+            dx' = dz.WT
 
         Arguments:
-            x {np.ndarray} -- g(z)
+            dx {np.ndarray} -- gradients of successive layer
             W {np.ndarray} -- layer weights
             b {np.ndarray}  -- layer bias
             z {np.ndarray} -- z = x_prev * W + b
-            x_prev {np.ndarray} --
-                output of previous layer
+            x_prev {np.ndarray} -- output of previous layer
 
         Returns:
-            Tuple[np.ndarray] --
+            {Tuple[np.ndarray]} --
                 gradients of the previous layer output,
                 the weight matrix, and the bias with
                 respect to the loss function.
         """
 
-        dz = self._activation_derivative(x, z)
+        dz = self._activation_derivative(dx, z)
         dW = x_prev.T.dot(dz) / self._bs
         db = np.sum(dz, axis=0, keepdims=True) / self._bs
         dx_prev = dz.dot(W.T)
@@ -219,7 +223,7 @@ class NeuralNet:
 
         return grads
 
-    def parameter_update(self, grads, lr):
+    def update(self, grads, lr):
         """Update parameters of network according
         to backpropagated gradients and the learning
         rate.
@@ -236,23 +240,78 @@ class NeuralNet:
             self._params["b" + str(idx)] -= lr * \
                 grads["db" + str(idx)]
 
-    def train(self, n_steps):
-        losses = []
+    def accuracy(self, y_hat, y):
+        """Return the percentage of correct class
+        predictions.
 
-        for step in range(n_steps):
-            x, y = next(loader.iterator("train"))
-            y = y.argmax(axis=1)
+        Arguments:
+            y_hat {np.ndarray} -- predicted classes
+            y {np.ndarray} -- actual classes
+
+        Returns:
+            {float} -- percentage of correct predictions
+        """
+
+        return np.count_nonzero(y_hat == y) / self._bs * 100
+
+    def train(self, n_steps):
+        """Run the training routine.
+
+        Arguments:
+            n_steps {int} -- the number of training iterations
+        """
+
+        losses = []
+        report_every = int(n_steps * 0.01)
+
+        start = time.time()
+        logging.info("\n\nStarting training...\n\n")
+
+        iter = self._loader.train_iterator(n_steps)
+        for step, (x, y) in enumerate(iter):
+            # get indices of batch labels
+            y = predictions(y)
+            # feedforward
             y_hat, cache = self.forward(x)
 
-            loss = self.cross_entropy(y_hat, y)
-            losses.append(loss)
+            if step % report_every == 0:
+                # calculate loss and accuracy
+                loss = self.cross_entropy(y_hat, y)
+                acc = self.accuracy(predictions(y_hat), y)
 
+                logging.info("Step: {}    Elapsed: {}    Loss: {:6g}    Accuracy: {:6g}".format(
+                    step, time_since(start), loss, acc))
+
+                losses.append(loss)
+
+            # calculate gradients and update parameters
             grads = self.backwards(y_hat, y, cache)
-            self.parameter_update(grads, self._lr)
+            self.update(grads, self._lr)
 
-        return self._params
+        logging.info("\n\nTraining complete!\n\n")
+        plot_loss(losses, report_every)
 
+    def test(self):
+        """
+        Run the evaluation routine.
+        """
 
-net = NeuralNet(loader.num_features, loader.num_classes,
-                2, 0.001, "relu", 20, 50, 20)
-net.train(100)
+        accuracies = []
+        logging.info("\n\nStarting evaluation...\n\n")
+
+        for (x, y) in self._loader.test_iterator():
+            # feedforward
+            y_hat, _ = self.forward(x)
+            # get indices of batch labels
+            preds, y = predictions(y_hat), predictions(y)
+
+            acc = self.accuracy(preds, y)
+            accuracies.append(acc)
+
+            logging.info(
+                "Pred: {}   Actual: {}  Accuracy: {:6g}".format(preds, y,  acc))
+
+        average_accuracy = sum(accuracies) / float(len(accuracies))
+        logging.info(
+            "Average test batch accuracy: {}".format(average_accuracy))
+        logging.info("\n\nEvaluation complete!\n\n")
