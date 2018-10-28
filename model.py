@@ -3,6 +3,7 @@ from typing import List, Tuple, Dict
 import math
 import time
 import logging
+from copy import copy
 import numpy as np
 
 import functional as F
@@ -13,11 +14,6 @@ from utils import plot_loss
 from utils import time_since
 
 
-ACTIVATIONS = {"relu": (F.relu, F.relu_derivative),
-               "sigmoid": (F.sigmoid, F.sigmoid_derivative)}
-LOSSES = {"cross_entropy": (F.cross_entropy, F.cross_entropy_derivative)}
-
-
 class NeuralNet:
     def __init__(self, loader, lr, activation, loss, *hidden_sizes):
         """Define network dimensions and activation functions.
@@ -25,8 +21,10 @@ class NeuralNet:
         Arguments:
             loader {data.Loader} -- a data loader
             lr {float} -- the learning rate
-            activation {str} -- name of the activation function
-            loss {str} -- name of the loss function
+            activation {Tuple[Callable]} --
+                tuple of activation function and its derivative
+            loss {Tuple[Callable]} --
+                tuple of loss function and its derivative
             hidden_sizes {int} -- variable number of hidden sizes
         """
 
@@ -35,26 +33,19 @@ class NeuralNet:
         self._bs = loader.batch_size
         self._layers = [loader.num_features, *hidden_sizes, loader.num_classes]
         self._num_layers = len(self._layers) - 1
+
+        self._activation, self._activation_derivative = activation
+        self._loss, self._loss_derivative = loss
+
         self._params = self.init_parameters()
-
-        if loss not in LOSSES.keys():
-            raise Exception("Loss function not supported!")
-        self._loss, self._loss_derivative = LOSSES[loss]
-
-        if activation not in ACTIVATIONS.keys():
-            raise Exception("Activation function not supported!")
-        self._activation, self._activation_derivative = ACTIVATIONS[activation]
 
     def init_parameters(self):
         """Initialise network weights and biases and
         save in a dictionary: ``params``. Layers are
         1-indexed (input = layer 0).
 
-        Weights initialised with a standard normal
-        distribution: mean = 0, standard deviation = 1.
+        Weights initialised with He initialisation.
         Biases initialised with zeros.
-
-        Parameters multiplied by 0.1 for numerical stability.
 
         Returns:
             {Dict[str, np.ndarray]} --
@@ -89,8 +80,6 @@ class NeuralNet:
             W = self._params["W" + str(idx)]
             b = self._params["b" + str(idx)]
             z = self.linear(x, W, b)
-            # cache intermediate result
-            cache["z" + str(idx)] = z
             # softmax activation for final layer
             activation = F.softmax if idx == self._num_layers else self._activation
             x = activation(z)
@@ -187,11 +176,13 @@ class NeuralNet:
             lr {float} -- the learning rate
         """
 
+        params = copy(self._params)
         for idx in range(1, self._num_layers + 1):
-            self._params["W" + str(idx)] -= lr * \
-                grads["dW" + str(idx)]
-            self._params["b" + str(idx)] -= lr * \
-                grads["db" + str(idx)]
+            W_delta = lr * grads["dW" + str(idx)]
+            b_delta = lr * grads["db" + str(idx)]
+            params["W" + str(idx)] = params["W" + str(idx)] - W_delta
+            params["b" + str(idx)] = params["b" + str(idx)] - b_delta
+        return params
 
     def train(self, n_steps):
         """Run the training routine.
@@ -213,15 +204,14 @@ class NeuralNet:
             # feedforward
             y_hat, cache = self.forward(x)
             if step % report_every == 0:
-                # calculate loss and accuracy
+                # calculate loss
                 loss = self._loss(y_hat, y)
-                acc = accuracy(predictions(y_hat), y)
-                logging.info("Step: {}    Elapsed: {}    Loss: {:6g}    Batch Accuracy: {:6g}".format(
-                    step, time_since(start), loss, acc))
+                logging.info("Step: {}    Elapsed: {}    Loss: {:6g}".format(
+                    step, time_since(start), loss))
                 losses.append(loss)
             # calculate gradients and update parameters
             grads = self.backwards(y_hat, y, cache)
-            self.update(grads, self._lr)
+            self._params = self.update(grads, self._lr)
 
         logging.info("\n\nTraining complete!\n\n")
         plot_loss(losses, report_every)

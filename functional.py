@@ -50,7 +50,7 @@ def cross_entropy(y_hat, y):
 
 
 def cross_entropy_derivative(y_hat, y):
-    """Calculate batch-average gradient of loss function
+    """Calculate gradient of loss function
         with respect to the network output.
 
     Expression:

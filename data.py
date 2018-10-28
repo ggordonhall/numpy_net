@@ -107,7 +107,7 @@ class Loader:
             num_classes: int -- number of classes
 
         Returns:
-            np.ndarray -- one-hot matrix
+            {np.ndarray} -- one-hot matrix
         """
 
         indices = np.array(labels) - 1

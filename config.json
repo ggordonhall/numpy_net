@@ -6,12 +6,12 @@
     "model": {
         "learning_rate": 0.001,
         "hidden_layers": [
-            50,
-            100
+            100,
+            30
         ],
         "activation_function": "relu",
         "loss_function": "cross_entropy"
     },
-    "num_steps": 10000,
+    "num_steps": 100,
     "batch_size": 2
 }
