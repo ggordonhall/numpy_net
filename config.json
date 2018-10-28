@@ -4,13 +4,14 @@
         "data": "wine.csv"
     },
     "model": {
-        "learning_rate": 0.0001,
+        "learning_rate": 0.001,
         "hidden_layers": [
-            100,
-            50
+            50,
+            100
         ],
-        "activation_function": "sigmoid"
+        "activation_function": "relu",
+        "loss_function": "cross_entropy"
     },
-    "num_steps": 1000,
-    "batch_size": 5
+    "num_steps": 10000,
+    "batch_size": 2
 }

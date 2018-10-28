@@ -15,6 +15,39 @@ def predictions(dist: np.ndarray) -> np.ndarray:
     return dist.argmax(axis=1)
 
 
+def he_init(in_dim: int, out_dim: int) -> np.ndarray:
+    """Initialised weights to balance the variance 
+    of the inputs and outputs of a layer. 
+
+    Arguments:
+        in_dim {int} -- input dimension
+        out_dim {int} -- output dimension
+
+    Returns:
+        np.ndarray -- 
+            initialised array: (inp_dim * out_dim)
+    """
+
+    standard_dist = np.random.randn(in_dim, out_dim)
+    return standard_dist * (2 / (in_dim + out_dim))
+
+
+def accuracy(y_hat, y):
+    """Return the percentage of correct class
+    predictions.
+
+    Arguments:
+        y_hat {np.ndarray} -- predicted classes
+        y {np.ndarray} -- actual classes
+
+    Returns:
+        {float} -- percentage of correct predictions
+    """
+
+    bs = y.shape[0]
+    return np.count_nonzero(y_hat == y) / bs * 100
+
+
 def time_since(since: float) -> str:
     """Calculate time elapsed"""
     now = time.time()
@@ -33,7 +66,7 @@ def plot_loss(losses, report_every):
     """
 
     series = pd.Series(losses)
-    rolling = series.rolling(window=(report_every // 5))
+    rolling = series.rolling(window=(report_every // 8))
     rolling_mean = rolling.mean()
     series.plot()
     rolling_mean.plot(color='red')

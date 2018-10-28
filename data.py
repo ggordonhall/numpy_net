@@ -49,7 +49,8 @@ class Loader:
 
         num_classes = len(set(labels))
         one_hot_labels = self._one_hot(labels, num_classes)
-        return list(zip(features, one_hot_labels))
+        features_norm = self._normalise(features)
+        return list(zip(features_norm, one_hot_labels))
 
     def _split(self, pairs: List[Tuple[np.ndarray]]) -> Tuple[List[Tuple[np.ndarray]]]:
         """Split list of pairs into training and test
@@ -83,6 +84,19 @@ class Loader:
         features = np.vstack([p[0] for p in batch])
         labels = np.vstack([p[1] for p in batch])
         return features, labels
+
+    def _normalise(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply min-max normalisation on each dataframe column.
+        Squashes values into the 0-1 range.
+
+        Arguments:
+            df {pd.DataFrame} -- columns of data
+
+        Returns:
+            {pd.DataFrame} -- normalised data
+        """
+
+        return (df - df.mean()) / (df.max() - df.min())
 
     def _one_hot(self, labels: List[int], num_classes: int) -> np.ndarray:
         """Convert label indicies to one-hot vectors.

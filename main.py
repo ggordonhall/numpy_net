@@ -10,8 +10,11 @@ def main(config):
     loader = Loader(data_path, config["batch_size"])
 
     model_args = config["model"]
-    net = NeuralNet(loader, model_args["learning_rate"],
-                    model_args["activation_function"], *model_args["hidden_layers"])
+    net = NeuralNet(loader,
+                    model_args["learning_rate"],
+                    model_args["activation_function"],
+                    model_args["loss_function"],
+                    *model_args["hidden_layers"])
 
     net.train(config["num_steps"])
     net.test()

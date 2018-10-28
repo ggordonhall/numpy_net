@@ -1,27 +1,32 @@
 from typing import List, Tuple, Dict
 
+import math
 import time
 import logging
 import numpy as np
 
 import functional as F
-from utils import time_since
+from utils import he_init
 from utils import predictions
+from utils import accuracy
 from utils import plot_loss
+from utils import time_since
 
 
 ACTIVATIONS = {"relu": (F.relu, F.relu_derivative),
                "sigmoid": (F.sigmoid, F.sigmoid_derivative)}
+LOSSES = {"cross_entropy": (F.cross_entropy, F.cross_entropy_derivative)}
 
 
 class NeuralNet:
-    def __init__(self, loader, lr, activation, *hidden_sizes):
+    def __init__(self, loader, lr, activation, loss, *hidden_sizes):
         """Define network dimensions and activation functions.
 
         Arguments:
             loader {data.Loader} -- a data loader
             lr {float} -- the learning rate
             activation {str} -- name of the activation function
+            loss {str} -- name of the loss function
             hidden_sizes {int} -- variable number of hidden sizes
         """
 
@@ -31,6 +36,10 @@ class NeuralNet:
         self._layers = [loader.num_features, *hidden_sizes, loader.num_classes]
         self._num_layers = len(self._layers) - 1
         self._params = self.init_parameters()
+
+        if loss not in LOSSES.keys():
+            raise Exception("Loss function not supported!")
+        self._loss, self._loss_derivative = LOSSES[loss]
 
         if activation not in ACTIVATIONS.keys():
             raise Exception("Activation function not supported!")
@@ -51,14 +60,12 @@ class NeuralNet:
             {Dict[str, np.ndarray]} --
                 parameter name to values mapping
         """
-        np.random.seed(99)
 
         params = {}
         for idx in range(1, self._num_layers + 1):
             in_dim, out_dim = self._layers[idx - 1], self._layers[idx]
-            standard_dist = np.random.randn(in_dim, out_dim)
-            params["W" + str(idx)] = standard_dist * 0.1
-            params["b" + str(idx)] = np.zeros((1, out_dim)) * 0.1
+            params["W" + str(idx)] = he_init(in_dim, out_dim)
+            params["b" + str(idx)] = np.zeros((1, out_dim))
         return params
 
     def forward(self, x):
@@ -81,18 +88,19 @@ class NeuralNet:
             cache["x" + str(idx - 1)] = x
             W = self._params["W" + str(idx)]
             b = self._params["b" + str(idx)]
-            x, z = self.layer(x, W, b)
+            z = self.linear(x, W, b)
             # cache intermediate result
             cache["z" + str(idx)] = z
-        return F.softmax(x), cache
+            # softmax activation for final layer
+            activation = F.softmax if idx == self._num_layers else self._activation
+            x = activation(z)
+        return x, cache
 
-    def layer(self, x, W, b):
-        """Linear transformation followed by non-linear
-        activation function, `g`.
+    def linear(self, x, W, b):
+        """Linear transformation of input.
 
-        Expressions:
+        Expression:
             1) z = xW + b
-            2) x' = g(z)
 
         Arguments:
             x {np.ndarray} --
@@ -103,86 +111,32 @@ class NeuralNet:
                 biases (batch size * next layer dim)
 
         Returns:
-            {Tuple[np.ndarray]} -- x', z
+            {np.ndarray} -- linear transformation of x
         """
 
-        z = x.dot(W) + b
-        return self._activation(z), z
+        return np.dot(x, W) + b
 
-    def cross_entropy(self, y_hat, y):
-        """Calculate cross entropy loss function
-        between predicted and actual probability
-        distribution.
-
-        Expression:
-            1) L = -∑(y * log(ŷ))
-
-        Arguments:
-            y_hat {np.ndarray} --
-                predicted probability distribution:
-                (batch size * number of classes)
-            y {np.ndarray} --
-                indices of the correct class for each example
-                in the batch: (batch size * 1)
-
-        Returns:
-            {float} -- average batch loss
-        """
-
-        log_likelihood = -np.log(y_hat[range(self._bs), y])
-        return np.sum(log_likelihood) / self._bs
-
-    def cross_entropy_derivative(self, y_hat, y):
-        """Calculate batch-average gradient of loss function
-         with respect to the network output.
-
-        Expression:
-            1) dL/dx = ŷ - y
-
-        Arguments:
-            y_hat {np.ndarray} --
-                predicted probability distribution:
-                (batch size * number of classes)
-            y {np.ndarray} --
-                indices of the correct class for each example
-                in the batch: (batch size * 1)
-
-        Returns:
-            {np.ndarray} --
-                gradients: (batch size * number of classes)
-        """
-
-        y_hat[range(self._bs), y] -= 1
-        return y_hat / self._bs
-
-    def backprop_layer(self, dx, W, b, z, x_prev):
+    def backprop_layer(self, delta, x):
         """Calculate the gradients for a single
         feedforward layer.
 
         Gradients:
-            dW = x'T.dz / bs
-            db = ∑ (dz) / bs
-            dx' = dz.WT
+            dW = xT.δ
+            db = ∑ (δ)
 
         Arguments:
-            dx {np.ndarray} -- gradients of successive layer
-            W {np.ndarray} -- layer weights
-            b {np.ndarray}  -- layer bias
-            z {np.ndarray} -- z = x_prev * W + b
-            x_prev {np.ndarray} -- output of previous layer
+            delta {np.ndarray} -- gradients of successive layer
+            x {np.ndarray} -- output of previous layer
 
         Returns:
             {Tuple[np.ndarray]} --
-                gradients of the previous layer output,
-                the weight matrix, and the bias with
-                respect to the loss function.
+                gradients of the the weight matrix, and
+                the bias with respect to the loss function.
         """
 
-        dz = self._activation_derivative(dx, z)
-        dW = x_prev.T.dot(dz) / self._bs
-        db = np.sum(dz, axis=0, keepdims=True) / self._bs
-        dx_prev = dz.dot(W.T)
-        return dx_prev, dW, db
+        dW = np.matmul(x.T, delta)
+        db = np.sum(delta, axis=0, keepdims=True)
+        return dW, db
 
     def backwards(self, y_hat, y, cache):
         """Calculate gradients of all parameters
@@ -203,23 +157,22 @@ class NeuralNet:
                 dict of gradients for each parameter
         """
 
-        # dict of paramter gradients
         grads = {}
         # gradient of loss function with respect to net output
-        dx_prev = self.cross_entropy_derivative(y_hat, y)
+        delta = self._loss_derivative(y_hat, y) / y_hat.shape[0]
         # calculate gradients of layers in reverse
         for idx in reversed(range(1, self._num_layers + 1)):
-            dx = dx_prev
-            # get output of layer
-            x_prev = cache["x" + str(idx - 1)]
-            z = cache["z" + str(idx)]
-            # get weights and biases of layer
-            W = self._params["W" + str(idx)]
-            b = self._params["b" + str(idx)]
-            # calculate gradients of layer and store in `grads` dict
-            dx_prev, dW, db = self.backprop_layer(dx, W, b, z, x_prev)
+            # get intermediate output
+            x = cache["x" + str(idx - 1)]
+            # calculate grads
+            dW, db = self.backprop_layer(delta, x)
             grads["dW" + str(idx)] = dW
             grads["db" + str(idx)] = db
+            # first layer does not have an activation
+            # function to differentiate
+            if idx > 1:
+                W = self._params["W" + str(idx)]
+                delta = np.matmul(delta, W.T) * self._activation_derivative(x)
 
         return grads
 
@@ -240,20 +193,6 @@ class NeuralNet:
             self._params["b" + str(idx)] -= lr * \
                 grads["db" + str(idx)]
 
-    def accuracy(self, y_hat, y):
-        """Return the percentage of correct class
-        predictions.
-
-        Arguments:
-            y_hat {np.ndarray} -- predicted classes
-            y {np.ndarray} -- actual classes
-
-        Returns:
-            {float} -- percentage of correct predictions
-        """
-
-        return np.count_nonzero(y_hat == y) / self._bs * 100
-
     def train(self, n_steps):
         """Run the training routine.
 
@@ -262,7 +201,7 @@ class NeuralNet:
         """
 
         losses = []
-        report_every = int(n_steps * 0.01)
+        report_every = math.ceil(n_steps * 0.01)
 
         start = time.time()
         logging.info("\n\nStarting training...\n\n")
@@ -273,17 +212,13 @@ class NeuralNet:
             y = predictions(y)
             # feedforward
             y_hat, cache = self.forward(x)
-
             if step % report_every == 0:
                 # calculate loss and accuracy
-                loss = self.cross_entropy(y_hat, y)
-                acc = self.accuracy(predictions(y_hat), y)
-
-                logging.info("Step: {}    Elapsed: {}    Loss: {:6g}    Accuracy: {:6g}".format(
+                loss = self._loss(y_hat, y)
+                acc = accuracy(predictions(y_hat), y)
+                logging.info("Step: {}    Elapsed: {}    Loss: {:6g}    Batch Accuracy: {:6g}".format(
                     step, time_since(start), loss, acc))
-
                 losses.append(loss)
-
             # calculate gradients and update parameters
             grads = self.backwards(y_hat, y, cache)
             self.update(grads, self._lr)
@@ -302,14 +237,14 @@ class NeuralNet:
         for (x, y) in self._loader.test_iterator():
             # feedforward
             y_hat, _ = self.forward(x)
+
             # get indices of batch labels
             preds, y = predictions(y_hat), predictions(y)
-
-            acc = self.accuracy(preds, y)
+            acc = accuracy(preds, y)
             accuracies.append(acc)
 
             logging.info(
-                "Pred: {}   Actual: {}  Accuracy: {:6g}".format(preds, y,  acc))
+                "Pred: {}   Actual: {}  Batch Accuracy: {:6g}".format(preds, y,  acc))
 
         average_accuracy = sum(accuracies) / float(len(accuracies))
         logging.info(
