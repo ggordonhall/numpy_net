@@ -1,3 +1,4 @@
+import os
 import math
 import time
 import logging
@@ -5,31 +6,6 @@ import logging
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
-
-def predictions(dist: np.ndarray) -> np.ndarray:
-    """
-    Return index of maximum value of each row 
-    in a batch.
-    """
-    return dist.argmax(axis=1)
-
-
-def he_init(in_dim: int, out_dim: int) -> np.ndarray:
-    """Initialised weights to balance the variance 
-    of the inputs and outputs of a layer. 
-
-    Arguments:
-        in_dim {int} -- input dimension
-        out_dim {int} -- output dimension
-
-    Returns:
-        np.ndarray -- 
-            initialised array: (inp_dim * out_dim)
-    """
-
-    standard_dist = np.random.randn(in_dim, out_dim)
-    return standard_dist * (2 / (in_dim + out_dim))
 
 
 def accuracy(y_hat, y):
@@ -54,7 +30,7 @@ def time_since(since: float) -> str:
     s = now - since
     m = math.floor(s / 60)
     s -= m * 60
-    return "%dm %ds" % (m, s)
+    return f"{m}m {s}s"
 
 
 def plot_loss(losses, report_every):
@@ -75,14 +51,16 @@ def plot_loss(losses, report_every):
     plt.xlabel("Steps")
     plt.grid(True)
     plt.legend(("Training loss", "Running average"))
-    plt.savefig("loss_plot.png", dpi=300)
+    plt.savefig(os.path.join("temp", "loss_plot.png"), dpi=300)
 
 
 def set_logger(log_path):
     """Set the logger to log info in terminal and file `log_path`.
-    Args:
+
+    Arguments:
         log_path {str} -- where to log
     """
+
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 

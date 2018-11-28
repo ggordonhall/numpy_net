@@ -1,14 +1,9 @@
-from typing import List, Tuple, Dict
-
 import math
 import time
 import logging
-from copy import copy
 import numpy as np
 
 import functional as F
-from utils import he_init
-from utils import predictions
 from utils import accuracy
 from utils import plot_loss
 from utils import time_since
@@ -103,7 +98,7 @@ class NeuralNet:
             {np.ndarray} -- linear transformation of x
         """
 
-        return np.dot(x, W) + b
+        return x.dot(W) + b
 
     def backprop_layer(self, delta, x):
         """Calculate the gradients for a single
@@ -123,7 +118,7 @@ class NeuralNet:
                 the bias with respect to the loss function.
         """
 
-        dW = np.matmul(x.T, delta)
+        dW = (x.T).dot(delta)
         db = np.sum(delta, axis=0, keepdims=True)
         return dW, db
 
@@ -148,7 +143,7 @@ class NeuralNet:
 
         grads = {}
         # gradient of loss function with respect to net output
-        delta = self._loss_derivative(y_hat, y) / y_hat.shape[0]
+        delta = self._loss_derivative(y_hat, y)
         # calculate gradients of layers in reverse
         for idx in reversed(range(1, self._num_layers + 1)):
             # get intermediate output
@@ -161,7 +156,7 @@ class NeuralNet:
             # function to differentiate
             if idx > 1:
                 W = self._params["W" + str(idx)]
-                delta = np.matmul(delta, W.T) * self._activation_derivative(x)
+                delta = delta.dot(W.T) * self._activation_derivative(x)
 
         return grads
 
@@ -176,13 +171,11 @@ class NeuralNet:
             lr {float} -- the learning rate
         """
 
-        params = copy(self._params)
         for idx in range(1, self._num_layers + 1):
             W_delta = lr * grads["dW" + str(idx)]
             b_delta = lr * grads["db" + str(idx)]
-            params["W" + str(idx)] = params["W" + str(idx)] - W_delta
-            params["b" + str(idx)] = params["b" + str(idx)] - b_delta
-        return params
+            self._params["W" + str(idx)] -= W_delta
+            self._params["b" + str(idx)] -= b_delta
 
     def train(self, n_steps):
         """Run the training routine.
@@ -199,8 +192,6 @@ class NeuralNet:
 
         iter = self._loader.train_iterator(n_steps)
         for step, (x, y) in enumerate(iter):
-            # get indices of batch labels
-            y = predictions(y)
             # feedforward
             y_hat, cache = self.forward(x)
             if step % report_every == 0:
@@ -211,7 +202,7 @@ class NeuralNet:
                 losses.append(loss)
             # calculate gradients and update parameters
             grads = self.backwards(y_hat, y, cache)
-            self._params = self.update(grads, self._lr)
+            self.update(grads, self._lr)
 
         logging.info("\n\nTraining complete!\n\n")
         plot_loss(losses, report_every)
@@ -227,16 +218,40 @@ class NeuralNet:
         for (x, y) in self._loader.test_iterator():
             # feedforward
             y_hat, _ = self.forward(x)
-
             # get indices of batch labels
             preds, y = predictions(y_hat), predictions(y)
             acc = accuracy(preds, y)
             accuracies.append(acc)
 
             logging.info(
-                "Pred: {}   Actual: {}  Batch Accuracy: {:6g}".format(preds, y,  acc))
+                "Pred: {}   Actual: {}  Batch Accuracy: {:6g}".format(preds, y, acc))
 
         average_accuracy = sum(accuracies) / float(len(accuracies))
         logging.info(
             "Average test batch accuracy: {}".format(average_accuracy))
         logging.info("\n\nEvaluation complete!\n\n")
+
+
+def predictions(dist: np.ndarray) -> np.ndarray:
+    """
+    Return index of maximum value of each row
+    in a batch.
+    """
+    return dist.argmax(axis=1)
+
+
+def he_init(in_dim: int, out_dim: int) -> np.ndarray:
+    """Initialised weights to balance the variance
+    of the inputs and outputs of a layer.
+
+    Arguments:
+        in_dim {int} -- input dimension
+        out_dim {int} -- output dimension
+
+    Returns:
+        np.ndarray --
+            initialised array: (inp_dim * out_dim)
+    """
+
+    standard_dist = np.random.randn(in_dim, out_dim)
+    return standard_dist * (2 / (in_dim + out_dim))

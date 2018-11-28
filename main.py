@@ -1,3 +1,4 @@
+import os
 import json
 
 import functional as F
@@ -11,7 +12,7 @@ losses = {"cross_entropy": (F.cross_entropy, F.cross_entropy_derivative)}
 
 
 def main(config):
-    data_path = config["paths"]["data"]
+    data_path = os.path.join("data", config["paths"]["data"])
     loader = Loader(data_path, config["batch_size"])
 
     model_args = config["model"]
@@ -38,6 +39,6 @@ def main(config):
 if __name__ == "__main__":
     config_path = "config.json"
     config = json.load(open(config_path, "r"))
-    set_logger(config["paths"]["log"])
+    set_logger(os.path.join("temp", config["paths"]["log"]))
 
     main(config)

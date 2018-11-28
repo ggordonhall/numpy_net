@@ -24,7 +24,7 @@ def sigmoid_derivative(x):
     return sigmoid(x) * (1 - sigmoid(x))
 
 
-def cross_entropy(y_hat, y):
+def cross_entropy(y_hat, y, epsilon=1e-12):
     """Calculate cross entropy loss function
     between predicted and actual probability
     distribution.
@@ -37,16 +37,17 @@ def cross_entropy(y_hat, y):
             predicted probability distribution:
             (batch size * number of classes)
         y {np.ndarray} --
-            indices of the correct class for each example
-            in the batch: (batch size * 1)
+            one-hot vector of the correct class for each example
+            in the batch: (batch size * num_classes)
 
     Returns:
         {float} -- average batch loss
     """
 
     bs = y.shape[0]
-    log_likelihood = -np.log(y_hat[range(bs), y])
-    return np.sum(log_likelihood) / bs
+    y_hat = np.clip(y_hat, epsilon, 1. - epsilon)
+    log_likelihood = -np.sum(y * np.log(y_hat + 1e-9))
+    return log_likelihood / bs
 
 
 def cross_entropy_derivative(y_hat, y):
@@ -61,8 +62,8 @@ def cross_entropy_derivative(y_hat, y):
             predicted probability distribution:
             (batch size * number of classes)
         y {np.ndarray} --
-            indices of the correct class for each example
-            in the batch: (batch size * 1)
+            one-hot vector of the correct class for each example
+            in the batch: (batch size * num_classes)
 
     Returns:
         {np.ndarray} --
@@ -70,5 +71,5 @@ def cross_entropy_derivative(y_hat, y):
     """
 
     bs = y_hat.shape[0]
-    y_hat[range(bs), y] -= 1
+    y_hat[range(bs), y.argmax(axis=1)] -= 1
     return y_hat
